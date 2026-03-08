@@ -6,16 +6,13 @@ import { EditorContent, useEditor } from '@tiptap/vue-3'
 import { computed, provide, toRef, unref, useAttrs, watch } from 'vue'
 
 import { useTheme } from 'vuetify'
-import { EDITOR_UPDATE_THROTTLE_WAIT_TIME, EDITOR_UPDATE_WATCH_THROTTLE_WAIT_TIME } from '@/constants/define'
-
 import { useMarkdownTheme, useProvideTiptapStore } from '@/hooks'
 import { useLocale } from '@/locales'
-import { differenceBy, getCssUnitWithDefault, hasExtension, isBoolean, isEqual, throttle } from '@/utils/utils'
+import { differenceBy, getCssUnitWithDefault, hasExtension, isBoolean, isEqual } from '@/utils/utils'
 import BubbleMenu from './BubbleMenu.vue'
 import TipTapToolbar from './TiptapToolbar.vue'
 
 type HandleKeyDown = NonNullable<EditorOptions['editorProps']['handleKeyDown']>
-type OnUpdate = NonNullable<EditorOptions['onUpdate']>
 
 interface Props {
   modelValue?: string | object
@@ -101,10 +98,12 @@ const sortExtensions = computed<AnyExtension[]>(() => {
   return [...exts, ...diff].map((k, i) => k.configure({ sort: i }))
 })
 
+let lastEmittedOutput: Props['modelValue'] = props.modelValue
+
 const editor = useEditor({
   content: props.modelValue,
   editorProps: {
-    handleKeyDown: throttle<HandleKeyDown>((view, event) => {
+    handleKeyDown: ((view, event) => {
       if (event.key === 'Enter' && attrs.enter && !event.shiftKey) {
         emit('enter')
 
@@ -112,15 +111,16 @@ const editor = useEditor({
       }
 
       return false
-    }, EDITOR_UPDATE_THROTTLE_WAIT_TIME),
+    }) as HandleKeyDown,
   },
-  onUpdate: throttle<OnUpdate>(({ editor }) => {
+  onUpdate: ({ editor }) => {
     const output = getOutput(editor, props.output)
 
+    lastEmittedOutput = output
     emit('update:modelValue', output)
 
     emit('change', { editor, output })
-  }, EDITOR_UPDATE_THROTTLE_WAIT_TIME),
+  },
   extensions: unref(sortExtensions),
   autofocus: false,
   editable: !props.disabled,
@@ -189,19 +189,18 @@ function getOutput(editor: CoreEditor, output: Props['output']) {
   return ''
 }
 
-const onValueChange = throttle((val: NonNullable<Props['modelValue']>) => {
+function onValueChange(val: NonNullable<Props['modelValue']>) {
   if (!editor.value)
     return
 
-  const output = getOutput(editor.value, props.output)
-
-  if (isEqual(output, val))
+  // Skip if this value originated from the editor's own onUpdate emit
+  if (isEqual(lastEmittedOutput, val))
     return
 
   const { from, to } = editor.value.state.selection
   editor.value.commands.setContent(val, { emitUpdate: false })
   editor.value.commands.setTextSelection({ from, to })
-}, EDITOR_UPDATE_WATCH_THROTTLE_WAIT_TIME)
+}
 
 const onDisabledChange = (val: boolean) => editor.value?.setEditable(!val)
 
