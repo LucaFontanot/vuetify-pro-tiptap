@@ -98,7 +98,7 @@ const sortExtensions = computed<AnyExtension[]>(() => {
   return [...exts, ...diff].map((k, i) => k.configure({ sort: i }))
 })
 
-let lastEmittedOutput: Props['modelValue']
+let lastEmittedOutput: Props['modelValue'] = props.modelValue
 
 const editor = useEditor({
   content: props.modelValue,
